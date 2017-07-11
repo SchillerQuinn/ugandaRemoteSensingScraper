@@ -66,47 +66,59 @@ def repeats(results):
                 news.append(i[0])
         # ask them if they want to keep the new files
         print("There are "+str(len(news))+" new files for "+loc+":")
-        print("Which files would you like to keep?") 
-        print("Enter nothing to download all of them, enter a number to download a specific picture"
-              ", or enter any letter to stop selecting pictures")
-        done = False
-        keep = []
-        while (not done):
-            #reprint the list of pictures
-            for n in range(len(news)):
-                print("\t"+str(n+1)+"): "+news[n].split('_')[2])
-
-            select = input("Please select: ")
-            if len(news)>0:
-                if select =="":
-                    #if they input nothing select everything
-                    #add the rest to the list to keep
-                    keep = keep + news
-                    done = True
-                elif select.isdigit():
-                    #get rid of floats
-                    select = int(select)
-                    #make sure they pick a valid number
-                    if (select > 0) and (select <= len(news)):
-                        #remove the selection from news and add it to keep
-                        keep.append(news.pop(select-1))
-                        # show what files are left
-                     #selected a bad number
-                    else:
-                        print("That is an invalid number")
-                        #else it is a letter
-                else:
-                    done=True
-            #if the length of keep is equal to or larger than the pictures to choose from
-            else: 
-                done = True
         
+        if len(news)== 0: #if there are no new files
+            print("You have already downloaded every image for "+loc)
+            return []
+        elif len(news)==1: #there is only one new file
+            print("There is one new file: "+news[0].split('_')[2])
+            save = input("Would you like to download it? Press enter to download it and enter any other"
+                  "symbol to cancel the download")
+            if save == "":
+                keep = news
+            else:
+                keep=[]
+        else:
+            print("Which files would you like to keep?") 
+            print("Enter nothing to download all of them, enter a number to download a specific picture"
+                  ", or enter any letter to stop selecting pictures")
+            done = False
+            keep = []
+            while (not done):
+                #reprint the list of pictures
+                for n in range(len(news)):
+                    print("\t"+str(n+1)+"): "+news[n].split('_')[2])
+
+                select = input("Please select: ")
+                if len(news)>0:
+                    if select =="":
+                        #if they input nothing select everything
+                        #add the rest to the list to keep
+                        keep = keep + news
+                        done = True
+                    elif select.isdigit():
+                        #get rid of floats
+                        select = int(select)
+                        #make sure they pick a valid number
+                        if (select > 0) and (select <= len(news)):
+                            #remove the selection from news and add it to keep
+                            keep.append(news.pop(select-1))
+                            # show what files are left
+                         #selected a bad number
+                        else:
+                            print("That is an invalid number")
+                            #else it is a letter
+                    else:
+                        done=True
+                #if the length of keep is equal to or larger than the pictures to choose from
+                else: 
+                    done = True
         #add list of products to keep to the UUIDs list
         for i in results[loc]:
             if i[0] in keep:
                 UUIDs = UUIDs + [i[1]]
         print("Finished selection for "+ loc)
-    return UUIDs
+        return UUIDs
     
 def main():
     """Finds and downloads all Sentinel 2 images of each chosen coordinate in the last month"""
