@@ -1,4 +1,6 @@
 import urllib.request, json, getpass, re, os
+import requests as r
+
 
 def getCreds():
     """gets username and password used to get into sciHub"""
@@ -11,6 +13,7 @@ def getCreds():
 def auth(creds):
     """Makes a global opener object to authenticate all further urlopen calls"""
     queryURL = "https://scihub.copernicus.eu/dhus/search?q=(platformname:Sentinel-2)&limit=1"
+    #queryURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products(%2216902fd3-f323-4014-a950-853ac602e22f%22)/Nodes(%22S1A_IW_SLC__1SDV_20141101T165548_20141101T165616_003091_0038AA_558F.SAFE%22)/Nodes(%22manifest.safe%22)/$value"
     username = creds[0]
     password = creds[1]
     # create a password manager
@@ -29,13 +32,13 @@ def query(locations):
     """Find all UUIDs and product names for all images of each area in the last month"""
     # get contents and IDs to download
     frontURL ="https://scihub.copernicus.eu/dhus/search?q=(footprint:%22Intersects("
-    backURL = (")%22)%20AND%20(beginPosition:[NOW-1MONTH%20TO%20NOW]%20AND%20endPosition:"
-              "[NOW-1MONTH%20TO%20NOW]%20)%20AND%20(platformname:Sentinel-2)&$select=entry&$orderbyIngestionDate")
+    backURL = ")%22)%20AND%20(beginPosition:[NOW-1MONTH%20TO%20NOW]%20AND%20endPosition:[NOW-1MONTH%20TO%20NOW]%20)%20AND%20(platformname:Sentinel-2)&$select=entry&$orderbyIngestionDate"
     results = {}
     for l in locations:
+        print('\n\n\n')
         print("Querying for "+l['name']+"...",end="")
         # find each product name and UUID
-        queryURL =(frontURL+l['coords']+backURL)
+        queryURL = (frontURL+l['coords']+backURL)
         # add it to the location information
         query = urllib.request.urlopen(queryURL)
         contents= str(query.read()) # TODO check for empty contents 
@@ -52,7 +55,7 @@ def query(locations):
     return(results)
 
 def repeats(results):
-    # find which files we already have
+    """find which files we already have"""
     have = [x[0] for x in os.walk('.')]
     # make holder list to keep results
     UUIDs = []
@@ -115,11 +118,25 @@ def repeats(results):
                     done = True
         #add list of products to keep to the UUIDs list
         for i in results[loc]:
-            if i[0] in keep:
-                UUIDs = UUIDs + [i[1]]
+             if i[0] in keep:
+                UUIDs = UUIDs + [[i[0],i[1]]]
         print("Finished selection for "+ loc)
         return UUIDs
-    
+
+def down(results):
+    """use wget to get images"""
+    frontURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products('\\\''"
+    #UUID
+    backURL ="'\\\'')/$value"
+    print(results)
+    for i in results:
+        UUID = i[1]
+        productName  = i[0]
+        print("\n\nStarting download:")
+        bashCommand = """wget --no-check-certificate --auth-no-challenge --continue --user=schillerquinn --password=Aa123456 -O {} '{}' """.format(os.getcwd()+'/'+productName+'.zip', (frontURL+ UUID+ backURL))
+        print(bashCommand)
+        os.system(bashCommand)
+
 def main():
     """Finds and downloads all Sentinel 2 images of each chosen coordinate in the last month"""
     #authenticate and make opener object
@@ -133,7 +150,7 @@ def main():
     authenticated = False
     #TODO find what takes so long around here
     while(not authenticated):
-        print("Attempting to authenticate...",end='')
+        print("\n\nAttempting to authenticate...",end='')
         try:
             opener = auth(creds)
             authenticated= True
@@ -155,7 +172,9 @@ def main():
     
     # get list of each image UUID and filename that fulfills the query
     results = query(locations)
-    print(repeats(results))
+    UUIDs =repeats(results)
+    down(UUIDs)
+
+    
 
 if __name__ == "__main__": main()
-# "https://scihub.copernicus.eu/dhus/odata/v1/Products('{UUID}')/$value"
