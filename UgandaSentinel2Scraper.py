@@ -35,7 +35,7 @@ def query(locations):
     backURL = ")%22)%20AND%20(beginPosition:[NOW-1MONTH%20TO%20NOW]%20AND%20endPosition:[NOW-1MONTH%20TO%20NOW]%20)%20AND%20(platformname:Sentinel-2)&$select=entry&$orderbyIngestionDate"
     results = {}
     for l in locations:
-        print('\n\n\n')
+        print('\n\n')
         print("Querying for "+l['name']+"...",end="")
         # find each product name and UUID
         queryURL = (frontURL+l['coords']+backURL)
@@ -51,7 +51,7 @@ def query(locations):
         
         #provide user feedback
         print("\tFound "+str(len(IDs))+" images of "+l['name']+" in the last month")
-    
+   
     return(results)
 
 def repeats(results):
@@ -130,49 +130,60 @@ def down(results, creds):
 
     baseURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products('\\\''{}'\\\'')/$value"
     
-    #TODO keyboard interupt kills processes
+    #tell user they can skip downloads
+    print("\n"+"*"*99)
+    print("**** Hit control+c to cancel downloads. Progress will continue the next time the script is ran ****")
+    print("\n"+"*"*99,end='')
 
     #prevent index errors for odd number downloads by downloading the first one first
-    if len(results)%2: 
-        #download the first image first 
-        print("\n\nStarting download for " + results[0][0])
-        command = "wget --no-check-certificate --auth-no-challenge --continue --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
-        command = command.format(creds[0] ,creds[1], results[0][0],baseURL.format(results[0][1]))
-        download = subprocess.Popen(command, shell=True)
-        download.wait() 
-        if download.poll()== 4:
-            raise Exception("Something broke")
-        #set the range. Note, this will cause the next loop to not run if there is only one picture 
-        ran = range(0, len(results)-1,2)
-    else:
-        ran = range(0, len(results),2)
-    
+    try:
+        if len(results)%2: 
+            #set the range. Note, this will cause the next loop to not run if there is only one picture 
+            ran = range(1, len(results),2)
+            #download the first image first 
+            print("\n\nStarting download for " + results[0][0])
+            command = "wget --no-check-certificate --auth-no-challenge --continue -q --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
+            command = command.format(creds[0] ,creds[1], results[0][0],baseURL.format(results[0][1]))
+            download = subprocess.Popen(command, shell=True)
+            download.wait() 
+            if download.poll()== 4:
+                raise Exception("Something broke")
+        else:
+            ran = range(0, len(results),2)
+    except KeyboardInterrupt:
+        print("\nCanceling download... Press enter to continue to the next downloads or hit control+c again to exit the script.")
+        wait = input()
     #download two at a time     
     for i in ran:
-        firstUUID = results[i][1]
-        firstProduct  = results[i][0]
-        secondUUID = results[i+1][1]
-        secondProduct = results[i+1][0]
-        print("\n\nStarting downloads for " + firstProduct[:27]+ "... and " + secondProduct[:27]+"...")
+        try:
+            firstUUID = results[i][1]
+            firstProduct  = results[i][0]
+            secondUUID = results[i+1][1]
+            secondProduct = results[i+1][0]
+            print("\n\nStarting downloads for " + firstProduct[:27]+ "... and " + secondProduct[:27]+"...")
 
-        #make commands
-        emptyCommand = "wget --no-check-certificate --auth-no-challenge --continue --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
-       
-        # username, password, file save name, where to download the file from
-        command1 = emptyCommand.format(creds[0], creds[1],firstProduct , baseURL.format(firstUUID))
-        command2 = emptyCommand.format(creds[0], creds[1], secondProduct, baseURL.format(secondUUID))
-        
-        #start the downloads
-        download1 = subprocess.Popen(command1, shell=True)
-        download2 = subprocess.Popen(command2, shell=True)
+            #make commands
+            emptyCommand = "wget --no-check-certificate --auth-no-challenge --continue -q --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
+           
+            # username, password, file save name, where to download the file from
+            command1 = emptyCommand.format(creds[0], creds[1],firstProduct , baseURL.format(firstUUID))
+            command2 = emptyCommand.format(creds[0], creds[1], secondProduct, baseURL.format(secondUUID))
+            
+            #start the downloads
+            download1 = subprocess.Popen(command1, shell=True)
+            download2 = subprocess.Popen(command2, shell=True)
 
-        #wait for them both to finish
-        download1.wait()
-        download2.wait()
-        
-        # look for errors
-        if download1.poll()== 4 or download2.poll()==4:
-            raise Exception("Something broke")
+            #wait for them both to finish
+            download1.wait()
+            download2.wait()
+            
+            # look for errors
+            if download1.poll()== 4 or download2.poll()==4:
+                raise Exception("Something broke")
+        except KeyboardInterrupt:
+            print("\nCanceling download... Press enter to continue to the next downloads or hit control+z again to exit the script.")
+            wait = input()
+
 
 def main():
     """Finds and downloads all Sentinel 2 images of each chosen coordinate in the last month"""
