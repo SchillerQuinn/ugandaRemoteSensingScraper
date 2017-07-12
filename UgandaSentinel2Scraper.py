@@ -1,4 +1,4 @@
-import urllib.request, json, getpass, re, os
+import urllib.request, json, getpass, re, os, subprocess, sys
 import requests as r
 
 
@@ -75,16 +75,14 @@ def repeats(results):
             return []
         elif len(news)==1: #there is only one new file
             print("There is one new file: "+news[0].split('_')[2])
-            save = input("Would you like to download it? Press enter to download it and enter any other"
-                  "symbol to cancel the download")
+            save = input("Would you like to download it? Press enter to download it and enter any other letter to cancel the download")
             if save == "":
                 keep = news
             else:
                 keep=[]
         else:
             print("Which files would you like to keep?") 
-            print("Enter nothing to download all of them, enter a number to download a specific picture"
-                  ", or enter any letter to stop selecting pictures")
+            print("Enter nothing to download all of them, enter a number to download a specific picture or enter any letter to stop selecting pictures")
             done = False
             keep = []
             while (not done):
@@ -107,7 +105,7 @@ def repeats(results):
                             #remove the selection from news and add it to keep
                             keep.append(news.pop(select-1))
                             # show what files are left
-                         #selected a bad number
+                            #selected a bad number
                         else:
                             print("That is an invalid number")
                             #else it is a letter
@@ -118,24 +116,63 @@ def repeats(results):
                     done = True
         #add list of products to keep to the UUIDs list
         for i in results[loc]:
-             if i[0] in keep:
+            if i[0] in keep:
                 UUIDs = UUIDs + [[i[0],i[1]]]
         print("Finished selection for "+ loc)
         return UUIDs
 
-def down(results):
+def down(results, creds):
     """use wget to get images"""
-    frontURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products('\\\''"
-    #UUID
-    backURL ="'\\\'')/$value"
-    print(results)
-    for i in results:
-        UUID = i[1]
-        productName  = i[0]
-        print("\n\nStarting download:")
-        bashCommand = """wget --no-check-certificate --auth-no-challenge --continue --user=schillerquinn --password=Aa123456 -O {} '{}' """.format(os.getcwd()+'/'+productName+'.zip', (frontURL+ UUID+ backURL))
-        print(bashCommand)
-        os.system(bashCommand)
+    #don't try to download anything if it doesn't exist
+    if len(results) == 0:
+        print("No images to download. Exiting.")
+        return(0)
+
+    baseURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products('\\\''{}'\\\'')/$value"
+    
+    #TODO keyboard interupt kills processes
+
+    #prevent index errors for odd number downloads by downloading the first one first
+    if len(results)%2: 
+        #download the first image first 
+        print("\n\nStarting download for " + results[0][0])
+        command = "wget --no-check-certificate --auth-no-challenge --continue --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
+        command = command.format(creds[0] ,creds[1], results[0][0],baseURL.format(results[0][1]))
+        download = subprocess.Popen(command, shell=True)
+        download.wait() 
+        if download.poll()== 4:
+            raise Exception("Something broke")
+        #set the range. Note, this will cause the next loop to not run if there is only one picture 
+        ran = range(0, len(results)-1,2)
+    else:
+        ran = range(0, len(results),2)
+    
+    #download two at a time     
+    for i in ran:
+        firstUUID = results[i][1]
+        firstProduct  = results[i][0]
+        secondUUID = results[i+1][1]
+        secondProduct = results[i+1][0]
+        print("\n\nStarting downloads for " + firstProduct[:27]+ "... and " + secondProduct[:27]+"...")
+
+        #make commands
+        emptyCommand = "wget --no-check-certificate --auth-no-challenge --continue --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
+       
+        # username, password, file save name, where to download the file from
+        command1 = emptyCommand.format(creds[0], creds[1],firstProduct , baseURL.format(firstUUID))
+        command2 = emptyCommand.format(creds[0], creds[1], secondProduct, baseURL.format(secondUUID))
+        
+        #start the downloads
+        download1 = subprocess.Popen(command1, shell=True)
+        download2 = subprocess.Popen(command2, shell=True)
+
+        #wait for them both to finish
+        download1.wait()
+        download2.wait()
+        
+        # look for errors
+        if download1.poll()== 4 or download2.poll()==4:
+            raise Exception("Something broke")
 
 def main():
     """Finds and downloads all Sentinel 2 images of each chosen coordinate in the last month"""
@@ -155,14 +192,10 @@ def main():
             opener = auth(creds)
             authenticated= True
         except urllib.error.HTTPError:
-            print(("\nThere was an error with your authentication. Please reenter your"
-                   " credentials and try again. If nothing is working, hit control+c to"
-                   " end the loop"))
+            print("\nThere was an error with your authentication. Please reenter your credentials and try again. If nothing is working, hit control+c to end the loop")
             creds = getCreds()
         except urllib.error.URLError:
-            print(("\nURL error. The URL is broken somehow. This can happen if your"
-                   "internet connection is bad or if the ESA is having a bad day"
-                   "and their server is down"))
+            print(("\nURL error. The URL is broken somehow. This can happen if your internet connection is bad or if the ESA is having a bad day and their server is down"))
             #allow users to loop or exit
             if (input("Would you like to try again? Enter anything to exit")!=""):
                 return(0)
@@ -173,7 +206,7 @@ def main():
     # get list of each image UUID and filename that fulfills the query
     results = query(locations)
     UUIDs =repeats(results)
-    down(UUIDs)
+    down(UUIDs, creds)
 
     
 
