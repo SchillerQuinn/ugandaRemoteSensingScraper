@@ -1,4 +1,4 @@
-import urllib.request, json, getpass, re, os, subprocess, sys, readchar
+import urllib.request, json, getpass, re, os, subprocess, sys, readchar, threading, time
 
 def getCreds():
     """gets username and password used to get into sciHub"""
@@ -86,7 +86,7 @@ def repeats(results):
                 keep = keep + news
         else:
             print("Which files would you like to keep?") 
-            print("Hit space to space to download all of them, enter a number to download a specific picture. Hit escape when you are done selecting.")
+            print("Hit space to space to download all of them, enter a number to download a specific picture. Hit escape twice when you are done selecting.")
             done = False
             keep = []
             while (not done):
@@ -113,12 +113,11 @@ def repeats(results):
                             # show what files are left
                             #selected a bad number
                         else:
-                            print("That is an invalid number")
+                            print("That is an invalid input")
                     elif select == "\x1b\x1b": #if they hit escape twice
                         done= True
                     else:
                         print("Invalid input. Hit space to space to download all pictures. Enter a number to download a specific picture. Hit escape twice when you are done selecting.")
-                
                 #if the length of keep is equal to or larger than the pictures to choose from
                 else: 
                     done = True
@@ -129,79 +128,52 @@ def repeats(results):
                 UUIDs = UUIDs + [[i[0],i[1]]]
         return UUIDs
 
+def subDown(formating):
+    """use wget to download an image"""
+    command = "wget --no-check-certificate --auth-no-challenge --continue -q --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}'"
+    download = subprocess.run(command.format(formating), shell=True)
+    #notify user that it is done
+    if download.returncode == 0:
+        print("Download of " + formatting[2][:-7] + " was successful")
+    else:
+        print("Download of " + formatting[2][:-7] + " had some kind of error")
+    return download.returncode
+
 def down(results, creds):
-    """use wget to get images"""
+    """start threads to downloas images"""
     #don't try to download anything if it doesn't exist
     if len(results) == 0:
         print("No images to download. Exiting.")
         return(0)
-
-    baseURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products('\\\''{}'\\\'')/$value"
-    
     #tell user they can skip downloads
     print("\n"+"*"*99)
-    print("**** Hit control+c to cancel downloads. Progress will continue the next time the script is ran ****")
+    print("**** Hold down control+c to cancel active downloads. Progress will continue the next time the script is ran ****")
     print("*"*99,end='')
-
-    #prevent index errors for odd number downloads by downloading the first one first
     
-    try:
-        if len(results)%2: 
-            #set the range. Note, this will cause the next loop to not run if there is only one picture 
-            ran = range(1, len(results),2)
-            #download the first image first 
-            print("\n\nStarting download for " + results[0][0])
-            command = "wget --no-check-certificate --auth-no-challenge --continue -q --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
-            command = command.format(creds[0] ,creds[1], results[0][0]+"partial",baseURL.format(results[0][1]))
-            download = subprocess.Popen(command, shell=True)
-            download.wait() 
-            if download.poll()== 4:
-                #force kill wget
-                subprocess.Popen("pkill -9 wget", shell=True)
-                raise Exception("Something broke")
-        else:
-            ran = range(0, len(results),2)
-    except KeyboardInterrupt:
-        #force kill wget
-        subprocess.Popen("pkill -9 wget", shell=True)
-        print("\nCanceling download... Press enter to continue to the next downloads or hit control+c again to exit the script.")
-        wait = input()
-    #download two at a time     
-    for i in ran:
+    baseURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products('\\\''{}'\\\'')/$value"
+
+    while len(results)>0:
         try:
-            firstUUID = results[i][1]
-            firstProduct  = results[i][0]
-            secondUUID = results[i+1][1]
-            secondProduct = results[i+1][0]
-            print("\n\nStarting downloads for " + firstProduct[:27]+ "... and " + secondProduct[:27]+"...")
-
-            #make commands
-            emptyCommand = "wget --no-check-certificate --auth-no-challenge --continue -q --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
-           
-            # username, password, file save name, where to download the file from
-            command1 = emptyCommand.format(creds[0], creds[1],firstProduct+"partial" , baseURL.format(firstUUID))
-            command2 = emptyCommand.format(creds[0], creds[1], secondProduct+"partial", baseURL.format(secondUUID))
-            
-            #start the downloads
-            download1 = subprocess.Popen(command1, shell=True)
-            download2 = subprocess.Popen(command2, shell=True)
-
-            #wait for them both to finish
-            download1.wait()
-            download2.wait()
-            
-            # look for errors
-            if download1.poll()== 4 or download2.poll()==4:
-                #force kill wget
-                subprocess.Popen("pkill -9 wget", shell=True)
-                raise Exception("Something broke")
+            if threading.active_count()<3: #main thread + 2 subthreads
+                    info = results.pop()
+                    print("\n\nStarting download for " + info[0][0])
+                    formatting = (creds[0] ,creds[1], info[0][0]+"partial",baseURL.format(info[0][1]))
+                    t = threading.Thread(subDown, args=(formatting,))
+                    t.start()
         except KeyboardInterrupt:
             #force kill wget
             subprocess.Popen("pkill -9 wget", shell=True)
-            print("\nCanceling downloads... Press enter to continue to the next downloads or hit control+z again to exit the script.")
+            print("\nCanceling all active download... Press enter to continue to the next downloads or hit control+c again to exit the script.")
             wait = input()
 
+        #only check once a second NOTE this means you have to hold down control+C to make it stop
+        time.sleep(1000)
 
+
+
+
+  
+   
 def main():
     """Finds and downloads all Sentinel 2 images of each chosen coordinate in the last month"""
     #authenticate and make opener object
@@ -212,7 +184,7 @@ def main():
     creds = getCreds()
 
     # make global opener object
-    authenticated = False
+    authentikcated = False
     #TODO find what takes so long around here
     while(not authenticated):
         print("\n\nAttempting to authenticate...",end='')
@@ -224,9 +196,13 @@ def main():
             creds = getCreds()
         except urllib.error.URLError:
             print(("\nURL error. The URL is broken somehow. This can happen if your internet connection is bad or if the ESA is having a bad day and their server is down"))
+            print("Press space to try agin and anything else to exit")
             #allow users to loop or exit
-            if (input("Would you like to try again? Enter anything to exit")!=""):
-                return(0)
+            if (readchar.readkey()!=" "):
+                return 1
+        except KeyboardInterrupt:
+            print("Exiting...")
+            return 1
     
     # make new authenticated opener object the default global opener
     urllib.request.install_opener(opener)
