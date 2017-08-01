@@ -103,3 +103,5 @@ ENV/
 *.zip
 
 {}
+
+wget-log

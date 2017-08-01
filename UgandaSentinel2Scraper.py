@@ -1,6 +1,4 @@
-import urllib.request, json, getpass, re, os, subprocess, sys
-import requests as r
-
+import urllib.request, json, getpass, re, os, subprocess, sys, readchar
 
 def getCreds():
     """gets username and password used to get into sciHub"""
@@ -45,7 +43,6 @@ def query(locations):
         # horrible regex fix because the formatting is horrible
         titles = re.findall('<title>(.*?)</title>',str(contents),re.DOTALL)[1:]
         IDs = re.findall('<id>(.*?)</id>',str(contents),re.DOTALL)[1:]
-        
         # save filename/UUID pairs in a dictionary
         results[l['name']] = tuple(zip(titles, IDs))
         
@@ -64,25 +61,32 @@ def repeats(results):
     for loc in results:
         #find all new files
         news = []
+        re = []
+        keep = []
         for i in results[loc]:
             if not (i[0] in have):
                 news.append(i[0])
+            if (i+"partial" in have):
+                 re.append(i[0])
         # ask them if they want to keep the new files
-        print("There are "+str(len(news))+" new files for "+loc+":")
+        print("There are "+str(len(news))+" new files for "+loc+".")
+        print("There are "+str(len(re))+" incomplete downloads for "+loc+".") 
         
+        # give the option to resume all downloads
+        print("Press space to resume all downloads or hit any other key to skip and start new downloads.")
+        if readchar.readkey() == ' ':
+            keep = re
         if len(news)== 0: #if there are no new files
-            print("You have already downloaded every image for "+loc)
+            print("You have already started a download for every image in "+loc)
             return []
         elif len(news)==1: #there is only one new file
             print("There is one new file: "+news[0].split('_')[2])
-            save = input("Would you like to download it? Press enter to download it and enter any other letter to cancel the download")
-            if save == "":
-                keep = news
-            else:
-                keep=[]
+            print("Would you like to download it? Press space to download it or hit any other key to cancel the download")
+            if readchar.readkey() == ' ':
+                keep = keep + news
         else:
             print("Which files would you like to keep?") 
-            print("Enter nothing to download all of them, enter a number to download a specific picture or enter any letter to stop selecting pictures")
+            print("Hit space to space to download all of them, enter a number to download a specific picture. Hit escape when you are done selecting.")
             done = False
             keep = []
             while (not done):
@@ -90,9 +94,11 @@ def repeats(results):
                 for n in range(len(news)):
                     print("\t"+str(n+1)+"): "+news[n].split('_')[2])
 
-                select = input("Please select: ")
+                print("Please select: ",end = "")
+                select = readchar.readkey()
+                print(select, end = "")
                 if len(news)>0:
-                    if select =="":
+                    if select ==" ":
                         #if they input nothing select everything
                         #add the rest to the list to keep
                         keep = keep + news
@@ -108,17 +114,19 @@ def repeats(results):
                             #selected a bad number
                         else:
                             print("That is an invalid number")
-                            #else it is a letter
+                    elif select == "\x1b\x1b": #if they hit escape twice
+                        done= True
                     else:
-                        done=True
+                        print("Invalid input. Hit space to space to download all pictures. Enter a number to download a specific picture. Hit escape twice when you are done selecting.")
+                
                 #if the length of keep is equal to or larger than the pictures to choose from
                 else: 
                     done = True
+            print("Finished selection for "+ loc)
         #add list of products to keep to the UUIDs list
         for i in results[loc]:
             if i[0] in keep:
                 UUIDs = UUIDs + [[i[0],i[1]]]
-        print("Finished selection for "+ loc)
         return UUIDs
 
 def down(results, creds):
@@ -133,9 +141,10 @@ def down(results, creds):
     #tell user they can skip downloads
     print("\n"+"*"*99)
     print("**** Hit control+c to cancel downloads. Progress will continue the next time the script is ran ****")
-    print("\n"+"*"*99,end='')
+    print("*"*99,end='')
 
     #prevent index errors for odd number downloads by downloading the first one first
+    
     try:
         if len(results)%2: 
             #set the range. Note, this will cause the next loop to not run if there is only one picture 
@@ -143,14 +152,18 @@ def down(results, creds):
             #download the first image first 
             print("\n\nStarting download for " + results[0][0])
             command = "wget --no-check-certificate --auth-no-challenge --continue -q --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
-            command = command.format(creds[0] ,creds[1], results[0][0],baseURL.format(results[0][1]))
+            command = command.format(creds[0] ,creds[1], results[0][0]+"partial",baseURL.format(results[0][1]))
             download = subprocess.Popen(command, shell=True)
             download.wait() 
             if download.poll()== 4:
+                #force kill wget
+                subprocess.Popen("pkill -9 wget", shell=True)
                 raise Exception("Something broke")
         else:
             ran = range(0, len(results),2)
     except KeyboardInterrupt:
+        #force kill wget
+        subprocess.Popen("pkill -9 wget", shell=True)
         print("\nCanceling download... Press enter to continue to the next downloads or hit control+c again to exit the script.")
         wait = input()
     #download two at a time     
@@ -166,8 +179,8 @@ def down(results, creds):
             emptyCommand = "wget --no-check-certificate --auth-no-challenge --continue -q --show-progress --user={} --password={} -O ./{}.zip --progress=bar:noscroll '{}' "
            
             # username, password, file save name, where to download the file from
-            command1 = emptyCommand.format(creds[0], creds[1],firstProduct , baseURL.format(firstUUID))
-            command2 = emptyCommand.format(creds[0], creds[1], secondProduct, baseURL.format(secondUUID))
+            command1 = emptyCommand.format(creds[0], creds[1],firstProduct+"partial" , baseURL.format(firstUUID))
+            command2 = emptyCommand.format(creds[0], creds[1], secondProduct+"partial", baseURL.format(secondUUID))
             
             #start the downloads
             download1 = subprocess.Popen(command1, shell=True)
@@ -179,9 +192,13 @@ def down(results, creds):
             
             # look for errors
             if download1.poll()== 4 or download2.poll()==4:
+                #force kill wget
+                subprocess.Popen("pkill -9 wget", shell=True)
                 raise Exception("Something broke")
         except KeyboardInterrupt:
-            print("\nCanceling download... Press enter to continue to the next downloads or hit control+z again to exit the script.")
+            #force kill wget
+            subprocess.Popen("pkill -9 wget", shell=True)
+            print("\nCanceling downloads... Press enter to continue to the next downloads or hit control+z again to exit the script.")
             wait = input()
 
 
