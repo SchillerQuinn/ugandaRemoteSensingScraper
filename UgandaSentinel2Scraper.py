@@ -1,4 +1,4 @@
-import getpass, re, os, subprocess, sys, readchar, threading, time, requests, hashlib
+import getpass, re, os, subprocess, sys, readchar, threading, time, requests, hashlib, signal
 
 class sentinel2Downloader:
     def __init__(self, loc):
@@ -57,6 +57,12 @@ class sentinel2Downloader:
                     if readchar.readkey() != " ":
                         # if they don't hit space, return an empty list
                         return []
+                except requests.exceptions.ConnectionError:
+                    print("Failed to make a connection. Please check your internet settings. Press space to try again or any other button to exit")
+                    if readchar.readkey() != " ":
+                        print("Exiting.")
+                        return []
+                    
             contents = query.text
             # horrible regex fix because the formatting is horrible
             titles = re.findall('<title>(.*?)</title>',str(contents),re.DOTALL)[1:]
@@ -188,24 +194,20 @@ class sentinel2Downloader:
             download = subprocess.Popen(command.format(*formatting), shell=True)
             pid = download.pid
             download.wait()
+            if download.returncode == 0:
+                print("Finished downloading " + formatting[2][:-7] + "... Performing checksum.")
+                return(self._check(formatting[2],UUID))
+            if download.returncode ==-2:
+                subprocess.Popen("pkill -9 -P {}".format(pid), shell=True)
+                print("Download of " + formatting[2][:-7] + " was canceled. Enter 'd' to delete the file or just hit Enter to move on")
+                if input() == "d":
+                    os.remove(filename)
         except KeyboardInterrupt:
             print("Download canceled.")
             subprocess.Popen("pkill -9 -P {}".format(pid), shell=True)
-            return True
-        #notify user that it is done
-        if download.returncode == 0:
-            print("Finished downloading " + formatting[2][:-7] + "... Performing checksum.")
-            return(self._check(formatting[2],UUID))
-        if download.returncode ==-2:
-            subprocess.Popen("pkill -9 -P {}".format(pid), shell=True)
-            print("Download of " + formatting[2][:-7] + " was canceled. Press Enter 'd' to delete the file or just hit Enter to move on")
-            if input() == "d":
-                os.remove(filename)             
-                return False
-            return True
-
+        
     def _down(self):
-        """start threads to downloas images"""
+        """start threads to download images"""
         #don't try to download anything if it doesn't exist
         downloadQueue = self._downloadList
         if len(self._downloadList) == 0:
@@ -218,19 +220,25 @@ class sentinel2Downloader:
         while len(downloadQueue)>0:
             try:
                 if threading.active_count()<3: #main thread + 2 subthreads
-                        info = downloadQueue.pop()
-                        print("\n\nStarting download for " + info[0])
-                        filename = "./{}partial.zip"
-                        baseURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products('\\\''{}'\\\'')/$value"
-                        UUID = info[1]
-                        formatting = [self._creds[0] ,self._creds[1], filename.format(info[0]), baseURL.format(UUID)]
+                    info = downloadQueue.pop()
+                    print("\n\nStarting download for " + info[0])
+                    filename = "./{}partial.zip"
+                    baseURL = "https://scihub.copernicus.eu/dhus/odata/v1/Products('\\\''{}'\\\'')/$value"
+                    UUID = info[1]
+                    formatting = [self._creds[0] ,self._creds[1], filename.format(info[0]), baseURL.format(UUID)]
+                    if len(downloadQueue)==1:
+                        t = threading.Thread(target = self._subDown, args=(formatting,UUID, ), daemon = True)
+                    else: 
                         t = threading.Thread(target = self._subDown, args=(formatting,UUID, ))
-                        t.start()
+
+                    t.start()
             except KeyboardInterrupt:
-                #force kill wget
-                subprocess.Popen("pkill -9 wget", shell=True)
-                print("\nCanceling all active download... Press enter to continue to the next downloads or hit control+c again to exit the script.")
-                wait = input()
+                pass
+                #force kill wget 
+                #print(threading.enumerate())
+                #subprocess.Popen("pkill -9 wget", shell=True)
+                #print("\nCanceling all active downloads... Press enter to continue to the next downloads or hit control+c again to exit the script.")
+                #wait = input()
     
 def main():
     locations = [dict(name = 'Budongo Forest Reserve',
