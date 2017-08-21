@@ -4,28 +4,7 @@ This script scrapes every [Sentinel 2](http://www.esa.int/Our_Activities/Observi
 To modify the locations, change the `locations` list in `main()`. For more complex edits, replace the url in the query function to whatever you want by following the instructions on [this API's documentation](https://scihub.copernicus.eu/userguide/5APIsAndBatchScripting)
 
 ## Dependencies
-Run these commands before runnign this script to install dependencies.
+Run these commands before running this script to install dependencies.
 ```
 pip install requests
 ```
-
-## TODO
-- [x] Download multiple images at the same time
-- [x] Make the downloading two at a time actually work the way it is supposed to	
-- [ ] Checksums
-- [ ] Automatically unzipping the files downloaded
-- [ ] Catch more errors from wget 
-- [ ] Find out why urllib takes a really long time to authenticate
-
-## Long-Term Goals
-- [ ] Make RGB image from downloaded files
-- [ ] Crop images to each village under study and export in useable format
-- [ ] Make NDVI calculations for each file
-
-## Really Long-Term Goals
-- [ ] Identify clouds
-  - [ ] Mask clouds
-  - [ ] Use masked cloud images to make composite images
-- [ ] Identify places where the forest was cut down
-  - [ ] Quantify area the amount of deforstation that was done in for each village
-- [ ] QGIS integration???
